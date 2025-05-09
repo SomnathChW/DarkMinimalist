@@ -254,19 +254,27 @@ const ImageCropper: React.FC = () => {
       const imageLeft = (containerRect.width - imageRect.width) / 2;
       const imageTop = (containerRect.height - imageRect.height) / 2;
       
-      // Adjust crop coordinates relative to the image
-      const imageCrop = {
-        x: Math.max(0, (crop.x - imageLeft) / imageRect.width),
-        y: Math.max(0, (crop.y - imageTop) / imageRect.height),
-        width: Math.min(1, crop.width / imageRect.width),
-        height: Math.min(1, crop.height / imageRect.height)
-      };
+      // Calculate actual crop coordinates relative to the image
+      let x = (crop.x - imageLeft) / imageRect.width;
+      let y = (crop.y - imageTop) / imageRect.height;
+      let width = crop.width / imageRect.width;
+      let height = crop.height / imageRect.height;
+      
+      // Apply bounds checking to ensure crop is within image
+      x = Math.max(0, Math.min(1 - width, x));
+      y = Math.max(0, Math.min(1 - height, y));
+      width = Math.max(0.05, Math.min(1 - x, width));
+      height = Math.max(0.05, Math.min(1 - y, height));
       
       // Save the normalized crop (as percentages of the image dimensions)
-      setImageCrop(imageCrop);
+      setImageCrop({
+        x, y, width, height
+      });
       
-      // Move to next image
-      nextImage();
+      // Move to next image - add a small delay to ensure the crop is saved
+      setTimeout(() => {
+        nextImage();
+      }, 50);
     }
   };
 
