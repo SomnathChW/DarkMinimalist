@@ -283,11 +283,22 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   const setImageCrop = (crop: ImageFile["cropped"]) => {
-    setImages(prevImages => 
-      prevImages.map((img, i) => 
-        i === currentImageIndex ? { ...img, cropped: crop } : img
-      )
-    );
+    // First make a copy of the current image
+    const currentImg = images[currentImageIndex];
+    
+    // Create a new version with the crop data
+    const updatedImg = { ...currentImg, cropped: crop };
+    
+    // Update the images array with the new version
+    const newImages = [...images];
+    newImages[currentImageIndex] = updatedImg;
+    
+    // Set the updated array to state
+    setImages(newImages);
+    
+    // Log for debugging
+    console.log("Crop applied:", crop);
+    console.log("Updated image:", updatedImg);
   };
 
   const selectAllImages = () => {

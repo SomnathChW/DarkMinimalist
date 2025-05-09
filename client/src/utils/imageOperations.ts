@@ -22,6 +22,8 @@ export const cropImage = (
 ): Promise<Blob> => {
   return new Promise((resolve, reject) => {
     try {
+      console.log("Starting crop operation with:", cropArea);
+      
       const canvas = document.createElement('canvas');
       const ctx = canvas.getContext('2d');
       
@@ -31,10 +33,24 @@ export const cropImage = (
       }
       
       // Calculate actual crop dimensions
-      const sourceX = image.naturalWidth * cropArea.x;
-      const sourceY = image.naturalHeight * cropArea.y;
-      const sourceWidth = image.naturalWidth * cropArea.width;
-      const sourceHeight = image.naturalHeight * cropArea.height;
+      const sourceX = Math.floor(image.naturalWidth * cropArea.x);
+      const sourceY = Math.floor(image.naturalHeight * cropArea.y);
+      const sourceWidth = Math.ceil(image.naturalWidth * cropArea.width);
+      const sourceHeight = Math.ceil(image.naturalHeight * cropArea.height);
+      
+      console.log("Image natural dimensions:", image.naturalWidth, "x", image.naturalHeight);
+      console.log("Calculated crop area:", sourceX, sourceY, sourceWidth, sourceHeight);
+      
+      // Ensure valid dimensions
+      if (sourceWidth <= 0 || sourceHeight <= 0) {
+        console.error("Invalid crop dimensions:", sourceWidth, sourceHeight);
+        // Return the original image if crop dimensions are invalid
+        image.toBlob(blob => {
+          if (blob) resolve(blob);
+          else reject(new Error('Could not create image blob'));
+        }, 'image/jpeg', 0.95);
+        return;
+      }
       
       // Set canvas dimensions to the cropped size
       canvas.width = sourceWidth;
@@ -50,12 +66,15 @@ export const cropImage = (
       // Convert to blob
       canvas.toBlob(blob => {
         if (blob) {
+          console.log("Crop completed successfully, blob size:", blob.size);
           resolve(blob);
         } else {
+          console.error("Failed to create blob from canvas");
           reject(new Error('Could not create image blob'));
         }
       }, 'image/jpeg', 0.95);
     } catch (error) {
+      console.error("Error in crop operation:", error);
       reject(error);
     }
   });
@@ -182,8 +201,11 @@ export const processBatchImages = async (
       // Apply crop if available
       let processedBlob: Blob;
       if (image.cropped) {
+        console.log("Applying crop to image:", image.file.name, image.cropped);
         processedBlob = await cropImage(img, image.cropped);
+        console.log("Crop applied successfully");
       } else {
+        console.log("No crop data for image:", image.file.name);
         processedBlob = image.file.slice();
       }
       

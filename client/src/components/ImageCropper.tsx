@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from "react";
 import { useAppContext } from "@/contexts/AppContext";
 import { Button } from "@/components/ui/button";
 import { X, Check } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 
 const ImageCropper: React.FC = () => {
   const { 
@@ -10,6 +11,8 @@ const ImageCropper: React.FC = () => {
     setImageCrop,
     nextImage
   } = useAppContext();
+  
+  const { toast } = useToast();
 
   const containerRef = useRef<HTMLDivElement>(null);
   const imageRef = useRef<HTMLImageElement>(null);
@@ -266,15 +269,25 @@ const ImageCropper: React.FC = () => {
       width = Math.max(0.05, Math.min(1 - x, width));
       height = Math.max(0.05, Math.min(1 - y, height));
       
-      // Save the normalized crop (as percentages of the image dimensions)
-      setImageCrop({
+      // Create the crop data
+      const cropData = {
         x, y, width, height
+      };
+      
+      // Save the normalized crop (as percentages of the image dimensions)
+      setImageCrop(cropData);
+      
+      // Show confirmation toast
+      toast({
+        title: "Crop Applied",
+        description: "Image crop has been saved",
+        variant: "default",
       });
       
       // Move to next image - add a small delay to ensure the crop is saved
       setTimeout(() => {
         nextImage();
-      }, 50);
+      }, 100);
     }
   };
 
