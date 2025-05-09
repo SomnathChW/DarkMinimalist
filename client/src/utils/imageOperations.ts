@@ -11,6 +11,7 @@ interface ResizeOptions {
   height: number;
   maintainAspectRatio: boolean;
   addPadding: boolean;
+  paddingColor?: string;
 }
 
 /**
@@ -24,6 +25,17 @@ export const cropImage = (
     try {
       console.log("Starting crop operation with:", cropArea);
       
+      // Validate crop area
+      if (!cropArea || typeof cropArea.x !== 'number' || typeof cropArea.y !== 'number' || 
+          typeof cropArea.width !== 'number' || typeof cropArea.height !== 'number') {
+        console.error("Invalid crop area:", cropArea);
+        image.toBlob(blob => {
+          if (blob) resolve(blob);
+          else reject(new Error('Could not create image blob'));
+        }, 'image/jpeg', 0.95);
+        return;
+      }
+      
       const canvas = document.createElement('canvas');
       const ctx = canvas.getContext('2d');
       
@@ -32,11 +44,17 @@ export const cropImage = (
         return;
       }
       
-      // Calculate actual crop dimensions
-      const sourceX = Math.floor(image.naturalWidth * cropArea.x);
-      const sourceY = Math.floor(image.naturalHeight * cropArea.y);
-      const sourceWidth = Math.ceil(image.naturalWidth * cropArea.width);
-      const sourceHeight = Math.ceil(image.naturalHeight * cropArea.height);
+      // Calculate actual crop dimensions - ensure we have positive values
+      const sourceX = Math.max(0, Math.floor(image.naturalWidth * cropArea.x));
+      const sourceY = Math.max(0, Math.floor(image.naturalHeight * cropArea.y));
+      const sourceWidth = Math.min(
+        image.naturalWidth - sourceX,
+        Math.ceil(image.naturalWidth * cropArea.width)
+      );
+      const sourceHeight = Math.min(
+        image.naturalHeight - sourceY,
+        Math.ceil(image.naturalHeight * cropArea.height)
+      );
       
       console.log("Image natural dimensions:", image.naturalWidth, "x", image.naturalHeight);
       console.log("Calculated crop area:", sourceX, sourceY, sourceWidth, sourceHeight);
@@ -97,7 +115,7 @@ export const resizeImage = (
         URL.revokeObjectURL(url);
         
         const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
+        const ctx = canvas.getContext('2d', { alpha: true });
         
         if (!ctx) {
           reject(new Error('Could not get canvas context'));
@@ -122,10 +140,18 @@ export const resizeImage = (
         canvas.width = options.width;
         canvas.height = options.height;
         
-        // Fill with white if padding is needed
+        // Clear canvas for transparency
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        // Fill with padding color if padding is needed
         if (options.addPadding) {
-          ctx.fillStyle = 'white';
-          ctx.fillRect(0, 0, canvas.width, canvas.height);
+          if (options.paddingColor === 'transparent') {
+            // For transparent padding, do nothing after clearRect
+          } else {
+            // Apply the color padding
+            ctx.fillStyle = options.paddingColor || 'white';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+          }
         }
         
         // Calculate positioning for centering the image
@@ -135,14 +161,21 @@ export const resizeImage = (
         // Draw the resized image
         ctx.drawImage(img, x, y, targetWidth, targetHeight);
         
-        // Convert to blob
-        canvas.toBlob(blob => {
-          if (blob) {
-            resolve(blob);
-          } else {
-            reject(new Error('Could not create resized image blob'));
-          }
-        }, 'image/jpeg', 0.95);
+        // Convert to blob - use PNG for transparent backgrounds, JPEG otherwise
+        const outputFormat = options.paddingColor === 'transparent' ? 'image/png' : 'image/jpeg';
+        const quality = outputFormat === 'image/png' ? undefined : 0.95;
+        
+        canvas.toBlob(
+          blob => {
+            if (blob) {
+              resolve(blob);
+            } else {
+              reject(new Error('Could not create resized image blob'));
+            }
+          },
+          outputFormat,
+          quality
+        );
       };
       
       img.onerror = () => {

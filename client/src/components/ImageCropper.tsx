@@ -1,381 +1,392 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
 import { useAppContext } from "@/contexts/AppContext";
 import { Button } from "@/components/ui/button";
-import { X, Check } from "lucide-react";
-import { useToast } from "@/hooks/use-toast";
+import { X, Check, Undo, RotateCcw } from "lucide-react";
+import ReactCrop, {
+    centerCrop,
+    makeAspectCrop,
+    Crop,
+    PixelCrop,
+} from "react-image-crop";
+import "react-image-crop/dist/ReactCrop.css";
+
+// Helper to create an image preview from the crop
+const createImage = (url: string): Promise<HTMLImageElement> => {
+    return new Promise((resolve, reject) => {
+        const image = new Image();
+        image.addEventListener("load", () => resolve(image));
+        image.addEventListener("error", (error) => reject(error));
+        image.src = url;
+    });
+};
+
+// Improved function for accurate crop preview generation
+async function getCroppedImg(
+    sourceUrl: string,
+    pixelCrop: PixelCrop,
+    naturalWidth: number,
+    naturalHeight: number
+): Promise<string> {
+    // Create a new image from the source
+    const image = await createImage(sourceUrl);
+
+    // Create a canvas element for the cropped image
+    const canvas = document.createElement("canvas");
+
+    // Calculate the scaling factor between displayed and natural image size
+    const scaleX = naturalWidth / image.width;
+    const scaleY = naturalHeight / image.height;
+
+    // Calculate crop dimensions in the actual image size
+    const sourceX = pixelCrop.x * scaleX;
+    const sourceY = pixelCrop.y * scaleY;
+    const sourceWidth = pixelCrop.width * scaleX;
+    const sourceHeight = pixelCrop.height * scaleY;
+
+    // Set canvas to the cropped size
+    canvas.width = pixelCrop.width; // Keep displayed size for preview
+    canvas.height = pixelCrop.height;
+
+    // Get the canvas context
+    const ctx = canvas.getContext("2d");
+    if (!ctx) {
+        throw new Error("Could not get canvas context");
+    }
+
+    // Enable high-quality image resampling
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
+
+    // Draw the cropped portion of the image onto the canvas
+    ctx.drawImage(
+        image,
+        sourceX,
+        sourceY,
+        sourceWidth,
+        sourceHeight, // Source rectangle
+        0,
+        0,
+        canvas.width,
+        canvas.height // Destination rectangle
+    );
+
+    // Convert canvas to a blob URL
+    return new Promise((resolve, reject) => {
+        canvas.toBlob(
+            (blob) => {
+                if (!blob) {
+                    reject(new Error("Canvas is empty"));
+                    return;
+                }
+                const url = URL.createObjectURL(blob);
+                resolve(url);
+            },
+            "image/jpeg",
+            0.95
+        );
+    });
+}
 
 const ImageCropper: React.FC = () => {
-  const { 
-    images,
-    currentImageIndex,
-    setImageCrop,
-    nextImage
-  } = useAppContext();
-  
-  const { toast } = useToast();
+    const {
+        images,
+        currentImageIndex,
+        setImageCrop,
+        nextImage,
+        setCurrentView,
+    } = useAppContext();
 
-  const containerRef = useRef<HTMLDivElement>(null);
-  const imageRef = useRef<HTMLImageElement>(null);
-  const cropBoxRef = useRef<HTMLDivElement>(null);
-  
-  const [crop, setCrop] = useState({
-    x: 0,
-    y: 0,
-    width: 0,
-    height: 0,
-    startX: 0,
-    startY: 0,
-    isDrawing: false,
-    isDragging: false,
-    isResizing: false,
-    resizeHandle: "",
-    offsetX: 0,
-    offsetY: 0
-  });
-
-  const currentImage = images[currentImageIndex];
-
-  useEffect(() => {
-    // Reset crop when the current image changes
-    setCrop({
-      x: 0,
-      y: 0,
-      width: 0,
-      height: 0,
-      startX: 0,
-      startY: 0,
-      isDrawing: false,
-      isDragging: false,
-      isResizing: false,
-      resizeHandle: "",
-      offsetX: 0,
-      offsetY: 0
+    const imgRef = useRef<HTMLImageElement>(null);
+    const [crop, setCrop] = useState<Crop>();
+    const [completedCrop, setCompletedCrop] = useState<PixelCrop>();
+    const [cropPreviewUrl, setCropPreviewUrl] = useState<string | null>(null);
+    const [originalCropData, setOriginalCropData] = useState<{
+        crop: PixelCrop | null;
+        cropUrl: string | null;
+    }>({ crop: null, cropUrl: null });
+    const [originalImageDimensions, setOriginalImageDimensions] = useState({
+        width: 0,
+        height: 0,
     });
-    
-    // If image has previous crop settings, restore them
-    if (currentImage?.cropped) {
-      const { x, y, width, height } = currentImage.cropped;
-      setCrop(prev => ({
-        ...prev,
-        x,
-        y,
-        width,
-        height
-      }));
-    }
-  }, [currentImageIndex, currentImage]);
 
-  const handleMouseDown = (e: React.MouseEvent) => {
-    if (!containerRef.current || !imageRef.current) return;
-    
-    const target = e.target as HTMLElement;
-    const cropBox = cropBoxRef.current;
-    
-    // Check if we're clicking on a resize handle
-    if (target.classList.contains('resize-handle')) {
-      e.preventDefault();
-      e.stopPropagation();
-      
-      setCrop(prev => ({
-        ...prev,
-        isResizing: true,
-        resizeHandle: target.classList[1], // nw, ne, sw, se
-      }));
-      return;
-    }
-    
-    // Check if we're clicking on the crop box for dragging
-    if (cropBox && cropBox.contains(target)) {
-      e.preventDefault();
-      e.stopPropagation();
-      
-      const rect = cropBox.getBoundingClientRect();
-      setCrop(prev => ({
-        ...prev,
-        isDragging: true,
-        offsetX: e.clientX - rect.left,
-        offsetY: e.clientY - rect.top
-      }));
-      return;
-    }
-    
-    // Otherwise, start drawing a new crop box
-    const container = containerRef.current;
-    const rect = container.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-    
-    setCrop({
-      x,
-      y,
-      width: 0,
-      height: 0,
-      startX: x,
-      startY: y,
-      isDrawing: true,
-      isDragging: false,
-      isResizing: false,
-      resizeHandle: "",
-      offsetX: 0,
-      offsetY: 0
-    });
-  };
+    const currentImage = images[currentImageIndex];
 
-  const handleMouseMove = (e: React.MouseEvent) => {
-    if (!containerRef.current) return;
-    
-    const container = containerRef.current;
-    const rect = container.getBoundingClientRect();
-    const mouseX = e.clientX - rect.left;
-    const mouseY = e.clientY - rect.top;
-    
-    // Constrain to container bounds
-    const boundedX = Math.max(0, Math.min(mouseX, rect.width));
-    const boundedY = Math.max(0, Math.min(mouseY, rect.height));
-    
-    if (crop.isDrawing) {
-      // Drawing a new crop box
-      const width = boundedX - crop.startX;
-      const height = boundedY - crop.startY;
-      
-      setCrop(prev => ({
-        ...prev,
-        width: Math.abs(width),
-        height: Math.abs(height),
-        x: width < 0 ? boundedX : crop.x,
-        y: height < 0 ? boundedY : crop.y
-      }));
-    } else if (crop.isDragging) {
-      // Dragging the existing crop box
-      const newX = boundedX - crop.offsetX;
-      const newY = boundedY - crop.offsetY;
-      
-      // Ensure crop box stays within bounds
-      const constrainedX = Math.max(0, Math.min(newX, rect.width - crop.width));
-      const constrainedY = Math.max(0, Math.min(newY, rect.height - crop.height));
-      
-      setCrop(prev => ({
-        ...prev,
-        x: constrainedX,
-        y: constrainedY
-      }));
-    } else if (crop.isResizing) {
-      // Resizing the crop box
-      let newX = crop.x;
-      let newY = crop.y;
-      let newWidth = crop.width;
-      let newHeight = crop.height;
-      
-      switch (crop.resizeHandle) {
-        case 'nw':
-          newWidth = crop.x + crop.width - boundedX;
-          newHeight = crop.y + crop.height - boundedY;
-          newX = boundedX;
-          newY = boundedY;
-          break;
-        case 'ne':
-          newWidth = boundedX - crop.x;
-          newHeight = crop.y + crop.height - boundedY;
-          newY = boundedY;
-          break;
-        case 'sw':
-          newWidth = crop.x + crop.width - boundedX;
-          newHeight = boundedY - crop.y;
-          newX = boundedX;
-          break;
-        case 'se':
-          newWidth = boundedX - crop.x;
-          newHeight = boundedY - crop.y;
-          break;
-      }
-      
-      // Ensure minimum size
-      if (newWidth < 20) {
-        newWidth = 20;
-        if (['nw', 'sw'].includes(crop.resizeHandle)) {
-          newX = crop.x + crop.width - newWidth;
+    // Reset state when the image changes
+    useEffect(() => {
+        setCrop(undefined);
+        setCompletedCrop(undefined);
+        setOriginalCropData({ crop: null, cropUrl: null });
+        setOriginalImageDimensions({ width: 0, height: 0 });
+
+        // Cleanup any previous crop preview
+        if (cropPreviewUrl) {
+            URL.revokeObjectURL(cropPreviewUrl);
+            setCropPreviewUrl(null);
         }
-      }
-      
-      if (newHeight < 20) {
-        newHeight = 20;
-        if (['nw', 'ne'].includes(crop.resizeHandle)) {
-          newY = crop.y + crop.height - newHeight;
+
+        // If the image already has a crop, apply it
+        if (currentImage?.cropped) {
+            // Convert our app's crop format to react-image-crop format
+            const existingCrop = {
+                unit: "%",
+                x: currentImage.cropped.x * 100,
+                y: currentImage.cropped.y * 100,
+                width: currentImage.cropped.width * 100,
+                height: currentImage.cropped.height * 100,
+            };
+            setCrop(existingCrop);
         }
-      }
-      
-      // Ensure within bounds
-      if (newX < 0) {
-        newWidth += newX;
-        newX = 0;
-      }
-      
-      if (newY < 0) {
-        newHeight += newY;
-        newY = 0;
-      }
-      
-      if (newX + newWidth > rect.width) {
-        newWidth = rect.width - newX;
-      }
-      
-      if (newY + newHeight > rect.height) {
-        newHeight = rect.height - newY;
-      }
-      
-      setCrop(prev => ({
-        ...prev,
-        x: newX,
-        y: newY,
-        width: newWidth,
-        height: newHeight
-      }));
-    }
-  };
+    }, [currentImageIndex, currentImage, cropPreviewUrl]);
 
-  const handleMouseUp = () => {
-    setCrop(prev => ({
-      ...prev,
-      isDrawing: false,
-      isDragging: false,
-      isResizing: false
-    }));
-  };
+    // Function to handle image load and setup initial crop if needed
+    const onImageLoad = useCallback(
+        (e: React.SyntheticEvent<HTMLImageElement>) => {
+            const image = e.currentTarget;
+            const { width, height } = image;
 
-  const confirmCrop = () => {
-    // Don't do anything if crop is too small
-    if (crop.width < 10 || crop.height < 10) {
-      return;
-    }
-    
-    // Normalize crop values relative to the image
-    if (imageRef.current && containerRef.current) {
-      const imageRect = imageRef.current.getBoundingClientRect();
-      const containerRect = containerRef.current.getBoundingClientRect();
-      
-      // Calculate the image's position within the container
-      const imageLeft = (containerRect.width - imageRect.width) / 2;
-      const imageTop = (containerRect.height - imageRect.height) / 2;
-      
-      // Calculate actual crop coordinates relative to the image
-      let x = (crop.x - imageLeft) / imageRect.width;
-      let y = (crop.y - imageTop) / imageRect.height;
-      let width = crop.width / imageRect.width;
-      let height = crop.height / imageRect.height;
-      
-      // Apply bounds checking to ensure crop is within image
-      x = Math.max(0, Math.min(1 - width, x));
-      y = Math.max(0, Math.min(1 - height, y));
-      width = Math.max(0.05, Math.min(1 - x, width));
-      height = Math.max(0.05, Math.min(1 - y, height));
-      
-      // Create the crop data
-      const cropData = {
-        x, y, width, height
-      };
-      
-      // Save the normalized crop (as percentages of the image dimensions)
-      setImageCrop(cropData);
-      
-      // Show confirmation toast
-      toast({
-        title: "Crop Applied",
-        description: "Image crop has been saved",
-        variant: "default",
-      });
-      
-      // Move to next image - add a small delay to ensure the crop is saved
-      setTimeout(() => {
+            console.log("Image loaded:", {
+                displayWidth: width,
+                displayHeight: height,
+                naturalWidth: image.naturalWidth,
+                naturalHeight: image.naturalHeight,
+            });
+
+            // Store the original image dimensions for accurate crop calculations
+            setOriginalImageDimensions({
+                width: image.naturalWidth,
+                height: image.naturalHeight,
+            });
+
+            // If no crop is set yet, set a default centered crop
+            if (!crop) {
+                const initialCrop = centerCrop(
+                    makeAspectCrop(
+                        {
+                            unit: "%",
+                            width: 80,
+                        },
+                        16 / 9,
+                        width,
+                        height
+                    ),
+                    width,
+                    height
+                );
+
+                setCrop(initialCrop);
+            }
+        },
+        [crop]
+    );
+
+    // Generate a preview when crop changes
+    useEffect(() => {
+        const generateCropPreview = async () => {
+            if (
+                !completedCrop?.width ||
+                !completedCrop?.height ||
+                !imgRef.current?.src
+            )
+                return;
+
+            // Don't generate previews for tiny crop adjustments to avoid lag
+            if (completedCrop.width < 10 || completedCrop.height < 10) return;
+
+            try {
+                console.log("Generating preview for crop:", completedCrop);
+
+                // Generate the crop preview
+                const previewUrl = await getCroppedImg(
+                    imgRef.current.src,
+                    completedCrop,
+                    originalImageDimensions.width,
+                    originalImageDimensions.height
+                );
+
+                // Store the current preview
+                setCropPreviewUrl(previewUrl);
+
+                // If this is the first crop, store it as original
+                if (!originalCropData.crop) {
+                    setOriginalCropData({
+                        crop: { ...completedCrop },
+                        cropUrl: previewUrl,
+                    });
+                }
+            } catch (error) {
+                console.error("Error generating crop preview:", error);
+            }
+        };
+
+        // Generate preview whenever the completed crop changes
+        if (completedCrop) {
+            // Clean up previous preview
+            if (cropPreviewUrl) {
+                URL.revokeObjectURL(cropPreviewUrl);
+            }
+
+            generateCropPreview();
+        }
+    }, [completedCrop, originalImageDimensions, originalCropData.crop]);
+
+    const handleCropComplete = (crop: PixelCrop) => {
+        setCompletedCrop(crop);
+    };
+
+    // Apply the crop when clicking the tick button - FIXED VERSION
+    const confirmCrop = useCallback(() => {
+        if (!completedCrop || !imgRef.current) return;
+
+        // Calculate scaling factors between displayed image and natural image
+        const scaleX = originalImageDimensions.width / imgRef.current.width;
+        const scaleY = originalImageDimensions.height / imgRef.current.height;
+
+        console.log("Scaling factors:", { scaleX, scaleY });
+
+        // Calculate crop dimensions in the actual image size (pixels)
+        const actualX = completedCrop.x * scaleX;
+        const actualY = completedCrop.y * scaleY;
+        const actualWidth = completedCrop.width * scaleX;
+        const actualHeight = completedCrop.height * scaleY;
+
+        // Calculate normalized percentage values relative to original image dimensions
+        const normalizedCrop = {
+            x: actualX / originalImageDimensions.width,
+            y: actualY / originalImageDimensions.height,
+            width: actualWidth / originalImageDimensions.width,
+            height: actualHeight / originalImageDimensions.height,
+        };
+
+        console.log("Original dimensions:", originalImageDimensions);
+        console.log(
+            "Display dimensions:",
+            imgRef.current.width,
+            imgRef.current.height
+        );
+        console.log("Completed crop (display):", completedCrop);
+        console.log("Actual crop (pixels):", {
+            actualX,
+            actualY,
+            actualWidth,
+            actualHeight,
+        });
+        console.log("Normalized crop (0-1):", normalizedCrop);
+
+        // Save the crop data in the app context
+        setImageCrop(normalizedCrop);
+
+        // Move directly to resize view
+        setCurrentView("resize");
+    }, [completedCrop, setImageCrop, setCurrentView, originalImageDimensions]);
+
+    // Revert to the original (uncropped) image
+    const revertToOriginal = () => {
+        // Clear crop for current image
+        setImageCrop(undefined);
+
+        // Reset the crop selection
+        setCrop(undefined);
+        setCompletedCrop(undefined);
+
+        // Cleanup preview
+        if (cropPreviewUrl) {
+            URL.revokeObjectURL(cropPreviewUrl);
+            setCropPreviewUrl(null);
+        }
+
+        // Reset original data
+        setOriginalCropData({ crop: null, cropUrl: null });
+    };
+
+    const cancelCrop = () => {
+        // Clear crop and move to next image
+        setImageCrop(undefined);
+
+        // Cleanup preview
+        if (cropPreviewUrl) {
+            URL.revokeObjectURL(cropPreviewUrl);
+            setCropPreviewUrl(null);
+        }
+
+        // Move to next image
         nextImage();
-      }, 100);
-    }
-  };
+    };
 
-  const cancelCrop = () => {
-    // Clear crop for current image
-    setImageCrop(undefined);
-    
-    // Move to next image
-    nextImage();
-  };
+    return (
+        <div className="relative w-full h-full flex items-center justify-center">
+            {currentImage ? (
+                <div className="relative w-full h-full flex items-center justify-center">
+                    <ReactCrop
+                        crop={crop}
+                        onChange={(c) => setCrop(c)}
+                        onComplete={handleCropComplete}
+                        className="max-h-full max-w-full"
+                        ruleOfThirds
+                        keepSelection={true}
+                    >
+                        <img
+                            ref={imgRef}
+                            src={currentImage.url}
+                            alt="Selected for cropping"
+                            className="max-h-full max-w-full object-contain"
+                            onLoad={onImageLoad}
+                            style={{ maxHeight: "90vh" }}
+                            crossOrigin="anonymous"
+                        />
+                    </ReactCrop>
 
-  return (
-    <div 
-      ref={containerRef}
-      className="relative w-full h-full flex items-center justify-center"
-      onMouseDown={handleMouseDown}
-      onMouseMove={handleMouseMove}
-      onMouseUp={handleMouseUp}
-      onMouseLeave={handleMouseUp}
-    >
-      {currentImage ? (
-        <>
-          <img 
-            ref={imageRef}
-            src={currentImage.url} 
-            alt="Selected for cropping"
-            className="max-h-full max-w-full object-contain"
-          />
-          
-          {/* Custom crop overlay implementation */}
-          <div className="absolute inset-0 pointer-events-none">
-            {/* Dark overlay for the entire container */}
-            <div className="absolute inset-0 bg-black opacity-70"></div>
-            
-            {/* Opening in the overlay for the crop area */}
-            {(crop.width > 0 && crop.height > 0) && (
-              <div 
-                className="absolute bg-transparent pointer-events-auto"
-                style={{
-                  top: `${crop.y}px`,
-                  left: `${crop.x}px`,
-                  width: `${crop.width}px`,
-                  height: `${crop.height}px`,
-                  boxShadow: '0 0 0 9999px rgba(0, 0, 0, 0.7)'
-                }}
-              >
-                {/* Crop box with border */}
-                <div 
-                  ref={cropBoxRef}
-                  className="absolute inset-0 border-2 border-dashed border-white cursor-move"
-                >
-                  <div className="resize-handle nw"></div>
-                  <div className="resize-handle ne"></div>
-                  <div className="resize-handle sw"></div>
-                  <div className="resize-handle se"></div>
+                    {/* Preview of current crop */}
+                    {cropPreviewUrl && (
+                        <div className="absolute top-4 right-4 p-2 bg-black/40 rounded-md">
+                            <img
+                                src={cropPreviewUrl}
+                                alt="Current crop"
+                                className="w-32 h-32 object-contain border border-white/30"
+                            />
+                        </div>
+                    )}
+
+                    {/* Crop Controls */}
+                    <div className="absolute bottom-4 right-4 flex gap-2 z-10">
+                        <Button
+                            variant="outline"
+                            size="icon"
+                            onClick={revertToOriginal}
+                            title="Revert to original image"
+                            className="rounded-md bg-amber-500 hover:bg-amber-600 text-white"
+                        >
+                            <RotateCcw size={20} />
+                        </Button>
+                        <Button
+                            variant="destructive"
+                            size="icon"
+                            onClick={cancelCrop}
+                            title="Cancel and skip image"
+                            className="rounded-md bg-red-500 hover:bg-red-600"
+                        >
+                            <X size={20} />
+                        </Button>
+                        <Button
+                            variant="default"
+                            size="icon"
+                            onClick={confirmCrop}
+                            title="Apply crop and continue"
+                            className="bg-green-500 text-white hover:bg-green-600 rounded-md"
+                            disabled={
+                                !completedCrop?.width || !completedCrop?.height
+                            }
+                        >
+                            <Check size={20} />
+                        </Button>
+                    </div>
                 </div>
-              </div>
+            ) : (
+                <div className="text-center p-8">
+                    <p className="text-muted-foreground">No image selected</p>
+                </div>
             )}
-          </div>
-          
-          {/* Crop Controls */}
-          <div className="absolute bottom-4 right-4 flex gap-2 z-10">
-            <Button 
-              variant="destructive" 
-              size="icon" 
-              onClick={cancelCrop}
-              className="rounded-md bg-red-500 hover:bg-red-600"
-            >
-              <X size={20} />
-            </Button>
-            <Button 
-              variant="default" 
-              size="icon" 
-              onClick={confirmCrop}
-              className="bg-green-500 text-white hover:bg-green-600 rounded-md"
-              disabled={crop.width < 10 || crop.height < 10}
-            >
-              <Check size={20} />
-            </Button>
-          </div>
-        </>
-      ) : (
-        <div className="text-center p-8">
-          <p className="text-muted-foreground">No image selected</p>
         </div>
-      )}
-    </div>
-  );
+    );
 };
 
 export default ImageCropper;
