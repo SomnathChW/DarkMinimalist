@@ -21,14 +21,14 @@ const Home: React.FC = () => {
     if (currentView === "complete") {
       toast({
         title: "Success!",
-        description: "Images processed and saved successfully.",
+        description: "Images processed and saved successfully. Click to download.",
         variant: "success",
       });
       
       // Reset app after showing success message
       const timer = setTimeout(() => {
         resetApp();
-      }, 3000);
+      }, 5000);
       
       return () => clearTimeout(timer);
     }
