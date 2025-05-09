@@ -9,6 +9,10 @@ const ThumbnailGallery: React.FC = () => {
     handleImageSelection
   } = useAppContext();
 
+  const toggleImageSelection = (index: number, currentValue: boolean) => {
+    handleImageSelection(index, !currentValue);
+  };
+
   return (
     <div className="flex-1 overflow-hidden flex flex-col">
       <h3 className="text-lg font-medium mb-2">Image Gallery</h3>
@@ -20,27 +24,37 @@ const ThumbnailGallery: React.FC = () => {
         ) : (
           <div className="grid grid-cols-3 gap-3">
             {images.map((image, index) => (
-              <div key={index} className="relative group">
-                {image.url ? (
-                  <img 
-                    src={image.url} 
-                    alt={`Thumbnail ${index + 1}`} 
-                    className="w-full h-24 object-cover rounded-md"
-                  />
-                ) : (
-                  <div className="w-full h-24 bg-secondary flex items-center justify-center rounded-md border border-border">
-                    <FileIcon size={32} className="text-muted-foreground" />
-                  </div>
-                )}
-                <div className="absolute bottom-1 right-1">
+              <div 
+                key={index} 
+                className="relative group cursor-pointer"
+                onClick={() => toggleImageSelection(index, image.selected)}
+              >
+                <div className="aspect-square w-full relative overflow-hidden rounded-md">
+                  {image.url ? (
+                    <img 
+                      src={image.url} 
+                      alt={`Thumbnail ${index + 1}`} 
+                      className="absolute inset-0 w-full h-full object-cover rounded-md"
+                    />
+                  ) : (
+                    <div className="absolute inset-0 w-full h-full bg-secondary flex items-center justify-center rounded-md border border-border">
+                      <FileIcon size={32} className="text-muted-foreground" />
+                    </div>
+                  )}
+                  <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-30 transition-all rounded-md"></div>
+                </div>
+                <div className="absolute bottom-2 right-2 z-10">
                   <Checkbox 
                     checked={image.selected}
                     onCheckedChange={(checked) => 
                       handleImageSelection(index, checked === true)
                     }
+                    onClick={(e) => {
+                      e.stopPropagation(); // Prevent the parent div's onClick from firing
+                    }}
+                    className="bg-secondary border-white"
                   />
                 </div>
-                <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-30 transition-all rounded-md"></div>
               </div>
             ))}
           </div>

@@ -42,16 +42,18 @@ const ImageCarousel: React.FC = () => {
             {selectedImages.map((image, index) => (
               <div 
                 key={index}
-                className={`carousel-item h-14 w-14 flex-shrink-0 cursor-pointer ${
+                className={`carousel-item flex-shrink-0 cursor-pointer ${
                   index === getSelectedImageIndexFromCurrentIndex() ? "active" : ""
                 }`}
                 onClick={() => goToImage(index)}
               >
-                <img 
-                  src={image.url} 
-                  alt={`Carousel ${index + 1}`} 
-                  className="h-full w-full object-cover rounded-md"
-                />
+                <div className="aspect-square h-14 w-14 relative overflow-hidden rounded-md">
+                  <img 
+                    src={image.url} 
+                    alt={`Carousel ${index + 1}`} 
+                    className="absolute inset-0 h-full w-full object-cover rounded-md"
+                  />
+                </div>
               </div>
             ))}
           </div>
