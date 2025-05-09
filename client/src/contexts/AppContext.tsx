@@ -195,6 +195,17 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         i === index ? { ...img, selected } : img
       )
     );
+    
+    // If image is being selected and it's the first selected image, 
+    // automatically move to crop view
+    if (selected) {
+      const currentSelectedCount = images.filter(img => img.selected).length;
+      if (currentSelectedCount === 0) {
+        // This is the first image being selected
+        setCurrentImageIndex(index);
+        setCurrentViewState("crop");
+      }
+    }
   };
 
   const handleNonImageExtensionToggle = (extension: string, selected: boolean) => {

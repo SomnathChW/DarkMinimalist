@@ -240,6 +240,11 @@ const ImageCropper: React.FC = () => {
   };
 
   const confirmCrop = () => {
+    // Don't do anything if crop is too small
+    if (crop.width < 10 || crop.height < 10) {
+      return;
+    }
+    
     // Normalize crop values relative to the image
     if (imageRef.current && containerRef.current) {
       const imageRect = imageRef.current.getBoundingClientRect();
@@ -251,10 +256,10 @@ const ImageCropper: React.FC = () => {
       
       // Adjust crop coordinates relative to the image
       const imageCrop = {
-        x: (crop.x - imageLeft) / imageRect.width,
-        y: (crop.y - imageTop) / imageRect.height,
-        width: crop.width / imageRect.width,
-        height: crop.height / imageRect.height
+        x: Math.max(0, (crop.x - imageLeft) / imageRect.width),
+        y: Math.max(0, (crop.y - imageTop) / imageRect.height),
+        width: Math.min(1, crop.width / imageRect.width),
+        height: Math.min(1, crop.height / imageRect.height)
       };
       
       // Save the normalized crop (as percentages of the image dimensions)
