@@ -291,42 +291,52 @@ const ImageCropper: React.FC = () => {
             className="max-h-full max-w-full object-contain"
           />
           
-          {/* Crop Overlay */}
-          <div className="crop-overlay">
+          {/* Custom crop overlay implementation */}
+          <div className="absolute inset-0 pointer-events-none">
+            {/* Dark overlay for the entire container */}
+            <div className="absolute inset-0 bg-black opacity-70"></div>
+            
+            {/* Opening in the overlay for the crop area */}
             {(crop.width > 0 && crop.height > 0) && (
               <div 
-                ref={cropBoxRef}
-                className="crop-box" 
+                className="absolute bg-transparent pointer-events-auto"
                 style={{
                   top: `${crop.y}px`,
                   left: `${crop.x}px`,
                   width: `${crop.width}px`,
-                  height: `${crop.height}px`
+                  height: `${crop.height}px`,
+                  boxShadow: '0 0 0 9999px rgba(0, 0, 0, 0.7)'
                 }}
               >
-                <div className="resize-handle nw"></div>
-                <div className="resize-handle ne"></div>
-                <div className="resize-handle sw"></div>
-                <div className="resize-handle se"></div>
+                {/* Crop box with border */}
+                <div 
+                  ref={cropBoxRef}
+                  className="absolute inset-0 border-2 border-dashed border-white cursor-move"
+                >
+                  <div className="resize-handle nw"></div>
+                  <div className="resize-handle ne"></div>
+                  <div className="resize-handle sw"></div>
+                  <div className="resize-handle se"></div>
+                </div>
               </div>
             )}
           </div>
           
           {/* Crop Controls */}
-          <div className="absolute bottom-4 right-4 flex gap-2">
+          <div className="absolute bottom-4 right-4 flex gap-2 z-10">
             <Button 
               variant="destructive" 
               size="icon" 
               onClick={cancelCrop}
-              className="rounded-md"
+              className="rounded-md bg-red-500 hover:bg-red-600"
             >
               <X size={20} />
             </Button>
             <Button 
-              variant="success" 
+              variant="default" 
               size="icon" 
               onClick={confirmCrop}
-              className="bg-success text-success-foreground hover:bg-success/80 rounded-md"
+              className="bg-green-500 text-white hover:bg-green-600 rounded-md"
               disabled={crop.width < 10 || crop.height < 10}
             >
               <Check size={20} />

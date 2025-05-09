@@ -1,4 +1,6 @@
 import React, { createContext, useContext, useState, ReactNode, useCallback } from "react";
+import { processBatchImages } from "../utils/imageOperations";
+import JSZip from "jszip";
 
 // Types
 export interface ImageFile {
@@ -316,22 +318,55 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   const processImages = async () => {
     // This would be where we'd actually process and save the images
-    // For now, we'll just simulate the process
     setIsProcessing(true);
     
-    // Simulate processing time
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    
-    setIsProcessing(false);
-    setCurrentView("complete");
-    
-    // In a real implementation, this would:
-    // 1. Create the output directory
-    // 2. Process each selected image (crop, resize, pad)
-    // 3. Rename if needed
-    // 4. Save to the output directory
-    
-    return Promise.resolve();
+    try {
+      // Process the images according to the settings
+      const processedImages = await processBatchImages(
+        selectedImages,
+        resizeSettings,
+        baseName,
+        shouldRename
+      );
+      
+      // Use directly imported JSZip
+      const zip = new JSZip();
+      
+      // Add each processed image to the zip
+      processedImages.forEach((file: File) => {
+        zip.file(file.name, file);
+      });
+      
+      // Generate the zip file
+      const zipBlob = await zip.generateAsync({type: 'blob'});
+      
+      // Create download link
+      const downloadUrl = URL.createObjectURL(zipBlob);
+      const downloadLink = document.createElement('a');
+      downloadLink.href = downloadUrl;
+      downloadLink.download = `processed_images.zip`;
+      
+      // Trigger download
+      document.body.appendChild(downloadLink);
+      downloadLink.click();
+      document.body.removeChild(downloadLink);
+      
+      // Clean up
+      URL.revokeObjectURL(downloadUrl);
+      
+      setIsProcessing(false);
+      setCurrentView("complete");
+      
+      return Promise.resolve();
+    } catch (error) {
+      console.error('Error processing images:', error);
+      setIsProcessing(false);
+      setValidationMessage({
+        type: "error",
+        text: "Failed to process images. Please try again."
+      });
+      return Promise.reject(error);
+    }
   };
 
   const value = {

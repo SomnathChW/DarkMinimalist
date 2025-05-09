@@ -42,11 +42,11 @@ const FolderSelector: React.FC = () => {
       {validationMessage.type !== "none" && (
         <div 
           className={`text-sm mb-3 ${
-            validationMessage.type === "success" ? "text-success" : "text-destructive"
+            validationMessage.type === "success" ? "text-green-500" : "text-destructive"
           }`}
         >
           {validationMessage.type === "success" ? (
-            <CheckCircle size={16} className="inline mr-1" />
+            <CheckCircle size={16} className="inline mr-1 text-green-500" />
           ) : (
             <XCircle size={16} className="inline mr-1" />
           )}
